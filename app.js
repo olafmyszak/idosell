@@ -1,41 +1,78 @@
-var createError = require('http-errors');
-var express = require('express');
-var path = require('path');
-var cookieParser = require('cookie-parser');
-var logger = require('morgan');
+const express = require("express");
+const app = express();
+const port = 3000;
 
-var indexRouter = require('./routes/index');
-var usersRouter = require('./routes/users');
+const dotenv = require("dotenv");
+dotenv.config();
 
-var app = express();
+// 1h
+async function getOrders() {
+  const url = `https://${process.env.API_URL}/api/admin/v5/orders/orders/search`;
 
-// view engine setup
-app.set('views', path.join(__dirname, 'views'));
-app.set('view engine', 'jade');
+  let page = 0;
+  const result = [];
 
-app.use(logger('dev'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
+  while (true) {
+    const options = {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        "X-API-KEY": process.env.API_KEY,
+      },
+      body: JSON.stringify({
+        params: {
+          ordersStatuses: [
+            "finished",
+            "on_order",
+            "packed",
+            "ready",
+            "delivery_waiting",
+            "finished_ext",
+          ],
+          resultsPage: page,
+        },
+      }),
+    };
 
-app.use('/', indexRouter);
-app.use('/users', usersRouter);
+    try {
+      const response = await fetch(url, options);
+      if (!response.ok) {
+        throw new Error(`Response status: ${response.status}`);
+      }
 
-// catch 404 and forward to error handler
-app.use(function(req, res, next) {
-  next(createError(404));
+      const json = await response.json();
+
+      const filtered = Object.values(json.Results)
+        .filter((entry) => {
+          const products = entry.orderDetails?.productsResults;
+          return products;
+        })
+        .map((entry) => ({
+          orderID: entry.orderId,
+          products: entry.orderDetails.productsResults.map((product) => ({
+            productID: product.productId,
+            quantity: product.productQuantity,
+          })),
+          orderWorth:
+            entry.orderDetails.payments.orderBaseCurrency.orderProductsCost,
+        }));
+
+      result.push(...filtered);
+
+      ++page;
+
+      if (page >= json.resultsNumberPage) {
+        break;
+      }
+    } catch (error) {
+      console.error(error.message);
+    }
+  }
+
+  return result;
+}
+
+getOrders().then(function (val) {
+  console.dir(val, { depth: null, maxArrayLength: null });
 });
-
-// error handler
-app.use(function(err, req, res, next) {
-  // set locals, only providing error in development
-  res.locals.message = err.message;
-  res.locals.error = req.app.get('env') === 'development' ? err : {};
-
-  // render the error page
-  res.status(err.status || 500);
-  res.render('error');
-});
-
-module.exports = app;
