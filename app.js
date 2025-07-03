@@ -43,10 +43,11 @@ async function getOrders() {
 
       const json = await response.json();
 
+      // Filter entries with null or empty products and extract relevant data
       const filtered = Object.values(json.Results)
         .filter((entry) => {
           const products = entry.orderDetails?.productsResults;
-          return products;
+          return products && Array.isArray(products) && products.length > 0;
         })
         .map((entry) => ({
           orderID: entry.orderId,
@@ -60,8 +61,8 @@ async function getOrders() {
 
       result.push(...filtered);
 
+      // Fetch data untill all pages were read
       ++page;
-
       if (page >= json.resultsNumberPage) {
         break;
       }
@@ -73,6 +74,62 @@ async function getOrders() {
   return result;
 }
 
-getOrders().then(function (val) {
-  console.dir(val, { depth: null, maxArrayLength: null });
+let ordersData = null;
+getOrders().then((data) => {
+  ordersData = data
+  console.log("Fetched orders data");
+})
+
+// Update daily
+setInterval(async () => {
+  data = await getOrders();
+
+}, 24 * 60 * 60 * 1000);
+
+function ordersToCSV(orders) {
+  const csvRows = [];
+
+  csvRows.push('Order ID,Product ID,Quantity,Order Worth');
+
+  orders.forEach(order => {
+    order.products.forEach(product => {
+      csvRows.push(`${order.orderID},${product.productID},${product.quantity},${order.orderWorth}`);
+    });
+  });
+
+  return csvRows.join('\n');
+}
+
+app.get('/orders/:orderId', (req, res) => {
+  const orderId = req.params.orderId;
+  const order = ordersData.find(o => o.orderID === orderId);
+
+  if (!order) {
+    return res.status(404).json({ error: `Order ${orderId} not found` })
+  }
+
+  res.json(order);
+})
+
+app.get('/orders', (req, res) => {
+  const { minWorth, maxWorth } = req.query;
+
+  const filtered = structuredClone(ordersData);
+
+  if(minWorth){
+
+  }
+
+  const csvContent = ordersToCSV(ordersData);
+
+
+
+  res.setHeader('Content-Type', 'text/plain');
+  res.send(csvContent);
 });
+
+
+app.listen(3000, () => {
+  console.log('Server running on port 3000');
+});
+
