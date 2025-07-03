@@ -76,60 +76,71 @@ async function getOrders() {
 
 let ordersData = null;
 getOrders().then((data) => {
-  ordersData = data
+  ordersData = data;
   console.log("Fetched orders data");
-})
+});
 
 // Update daily
 setInterval(async () => {
   data = await getOrders();
-
 }, 24 * 60 * 60 * 1000);
 
+// 20 min
 function ordersToCSV(orders) {
   const csvRows = [];
 
-  csvRows.push('Order ID,Product ID,Quantity,Order Worth');
+  csvRows.push("Order ID,Product ID,Quantity,Order Worth");
 
-  orders.forEach(order => {
-    order.products.forEach(product => {
-      csvRows.push(`${order.orderID},${product.productID},${product.quantity},${order.orderWorth}`);
+  orders.forEach((order) => {
+    order.products.forEach((product) => {
+      csvRows.push(
+        `${order.orderID},${product.productID},${product.quantity},${order.orderWorth}`
+      );
     });
   });
 
-  return csvRows.join('\n');
+  return csvRows.join("\n");
 }
 
-app.get('/orders/:orderId', (req, res) => {
+// 5 min
+app.get("/orders/:orderId", (req, res) => {
   const orderId = req.params.orderId;
-  const order = ordersData.find(o => o.orderID === orderId);
+  const order = ordersData.find((o) => o.orderID === orderId);
 
   if (!order) {
-    return res.status(404).json({ error: `Order ${orderId} not found` })
+    return res.status(404).json({ error: `Order ${orderId} not found` });
   }
 
   res.json(order);
-})
+});
 
-app.get('/orders', (req, res) => {
-  const { minWorth, maxWorth } = req.query;
+// 10 min
+app.get("/orders", (req, res) => {
+  const minWorth = Number(req.query.minWorth);
+  const maxWorth = Number(req.query.maxWorth);
 
-  const filtered = structuredClone(ordersData);
+  let filtered = ordersData;
 
-  if(minWorth){
-
+  if (!Number.isNaN(minWorth)) {
+    filtered = filtered.filter((entry) => entry.orderWorth >= minWorth);
   }
 
-  const csvContent = ordersToCSV(ordersData);
+  if (!Number.isNaN(maxWorth)) {
+    filtered = filtered.filter((entry) => entry.orderWorth <= maxWorth);
+  }
 
+  const csvContent = ordersToCSV(filtered);
 
-
-  res.setHeader('Content-Type', 'text/plain');
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="orders_${Date.now()}.csv"`
+  );
   res.send(csvContent);
 });
 
+// TODO - basic auth
 
 app.listen(3000, () => {
-  console.log('Server running on port 3000');
+  console.log("Server running on port 3000");
 });
-
