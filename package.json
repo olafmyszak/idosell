@@ -4,11 +4,20 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node ./bin/www"
+    "start": "node server.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --detectOpenHandles"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "transform": {}
   },
   "dependencies": {
     "dotenv": "^17.0.1",
     "express": "^5.1.0",
     "express-basic-auth": "^1.2.1"
+  },
+  "devDependencies": {
+    "jest": "^30.0.4",
+    "supertest": "^7.1.1"
   }
 }

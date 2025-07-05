@@ -1,7 +1,7 @@
 import { config } from "dotenv";
 config();
 
-let ordersData = null;
+let ordersData = [];
 
 export function getOrdersData() {
     return ordersData;

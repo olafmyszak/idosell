@@ -1,0 +1,48 @@
+## Installation
+
+1. Clone the repository:
+
+```bash
+git clone https://github.com/olafmyszak/idosell.git
+cd idosell
+```
+
+2. Install dependencies:
+
+```bash
+npm install
+```
+
+3. Create a .env file in the root directory:
+
+```env
+API_URL=your_api_url_here
+API_KEY=your_api_key_here
+```
+
+4. Start the server with:
+
+```bash
+npm run start
+```
+
+By default, the server runs at http://localhost:3000.
+
+
+## API Endpoints
+
+| Method | Endpoint           | Description              |
+| ------ | ------------------ | ------------------------ |
+| GET    | `/orders`          | Returns a list of orders |
+| GET    | `/orders/:orderId` | Returns a specific order |
+
+
+## Testing
+
+This project uses Jest and Supertest for integration testing.
+
+To run tests:
+
+```bash
+npm test
+```
