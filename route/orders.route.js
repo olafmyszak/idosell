@@ -1,12 +1,16 @@
 import express from "express";
-import { getOrdersData, ordersToCSV } from "../service/orders.service.js";
+import {
+  getAllOrders,
+  getOrderById,
+  ordersToCSV,
+} from "../service/orders.service.js";
 
 const router = express.Router();
 
 // 5 min
 router.get("/:orderId", async (req, res) => {
   const orderId = req.params.orderId;
-  const order = getOrdersData().find((o) => o.orderID === orderId);
+  const order = getOrderById(orderId);
 
   if (!order) {
     return res.status(404).json({ error: `Order ${orderId} not found` });
@@ -20,7 +24,7 @@ router.get("/", async (req, res) => {
   const minWorth = Number(req.query.minWorth);
   const maxWorth = Number(req.query.maxWorth);
 
-  let filtered = getOrdersData();
+  let filtered = getAllOrders();
 
   if (!Number.isNaN(minWorth)) {
     filtered = filtered.filter((entry) => entry.orderWorth >= minWorth);

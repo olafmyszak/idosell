@@ -1,95 +1,153 @@
 import { config } from "dotenv";
+import Database from "better-sqlite3";
+
+// Load .env
 config();
 
-let ordersData = [];
+const db = new Database("data.db");
+db.exec(`
+    CREATE TABLE IF NOT EXISTS orders (
+        orderID TEXT PRIMARY KEY,
+        products TEXT,
+        orderWorth REAL
+    );
+`);
 
-export function getOrdersData() {
-    return ordersData;
+db.exec(`
+    CREATE TABLE IF NOT EXISTS fetch_log (
+        id INTEGER PRIMARY KEY,
+        last_fetch_date TEXT NOT NULL,
+        last_fetch_timestamp INTEGER NOT NULL,
+        status TEXT DEFAULT 'success'
+    );
+`);
+
+export function getOrderById(orderId) {
+  const getOrder = db.prepare("SELECT * FROM orders WHERE orderID = ?");
+  const order = getOrder.get(orderId);
+
+  if (!order) {
+    return null;
+  }
+
+  return {
+    orderID: order.orderID,
+    products: JSON.parse(order.products),
+    orderWorth: order.orderWorth,
+  };
+}
+
+export function getAllOrders() {
+  let orders = db.prepare("SELECT * FROM orders").all();
+
+  orders = orders.map((row) => ({
+    orderID: row.orderID,
+    products: JSON.parse(row.products),
+    orderWorth: row.orderWorth,
+  }));
+
+  return orders;
 }
 
 // 1h
 export async function fetchOrders() {
-    const url = `https://${process.env.API_URL}/api/admin/v5/orders/orders/search`;
+  const url = `https://${process.env.API_URL}/api/admin/v5/orders/orders/search`;
 
-    let page = 0;
-    const result = [];
+  let page = 0;
 
-    while (true) {
-        const options = {
-            method: "POST",
-            headers: {
-                accept: "application/json",
-                "content-type": "application/json",
-                "X-API-KEY": process.env.API_KEY,
-            },
-            body: JSON.stringify({
-                params: {
-                    ordersStatuses: [
-                        "finished",
-                        "on_order",
-                        "packed",
-                        "ready",
-                        "delivery_waiting",
-                        "finished_ext",
-                    ],
-                    resultsPage: page,
-                },
-            }),
-        };
+  while (true) {
+    const options = {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        "X-API-KEY": process.env.API_KEY,
+      },
+      body: JSON.stringify({
+        params: {
+          ordersStatuses: [
+            "finished",
+            "on_order",
+            "packed",
+            "ready",
+            "delivery_waiting",
+            "finished_ext",
+          ],
+          resultsPage: page,
+        },
+      }),
+    };
 
-        try {
-            const response = await fetch(url, options);
-            if (!response.ok) {
-                throw new Error(`Response status: ${response.status}`);
-            }
+    try {
+      const response = await fetch(url, options);
+      if (!response.ok) {
+        throw new Error(`Response status: ${response.status}`);
+      }
 
-            const json = await response.json();
+      const json = await response.json();
 
-            // Filter entries with null or empty products and extract relevant data
-            const filtered = Object.values(json.Results)
-                .filter((entry) => {
-                    const products = entry.orderDetails?.productsResults;
-                    return products && Array.isArray(products) && products.length > 0;
-                })
-                .map((entry) => ({
-                    orderID: entry.orderId,
-                    products: entry.orderDetails.productsResults.map((product) => ({
-                        productID: product.productId,
-                        quantity: product.productQuantity,
-                    })),
-                    orderWorth:
-                        entry.orderDetails.payments.orderBaseCurrency.orderProductsCost,
-                }));
+      // Filter entries with null or empty products and extract relevant data
+      const filtered = Object.values(json.Results)
+        .filter((entry) => {
+          const products = entry.orderDetails?.productsResults;
+          return products && Array.isArray(products) && products.length > 0;
+        })
+        .map((entry) => ({
+          orderID: entry.orderId,
+          products: entry.orderDetails.productsResults.map((product) => ({
+            productID: product.productId,
+            quantity: product.productQuantity,
+          })),
+          orderWorth:
+            entry.orderDetails.payments.orderBaseCurrency.orderProductsCost,
+        }));
 
-            result.push(...filtered);
+      const insert = db.prepare(`
+                      INSERT OR REPLACE INTO orders (orderID, products, orderWorth)
+                      VALUES (?, ?, ?)
+                      `);
 
-            // Fetch data untill all pages were read
-            ++page;
-            if (page >= json.resultsNumberPage) {
-                break;
-            }
-        } catch (error) {
-            console.error(error.message);
+      const insertMany = db.transaction((orders) => {
+        for (const order of orders) {
+          insert.run(
+            order.orderID,
+            JSON.stringify(order.products),
+            order.orderWorth
+          );
         }
-    }
+      });
 
-    ordersData = result;
+      insertMany(filtered);
+
+      // Fetch data untill all pages were read
+      ++page;
+      if (page >= json.resultsNumberPage) {
+        break;
+      }
+    } catch (error) {
+      console.error("External API error:", error);
+      throw new Error(`Failed to fetch data: ${error.message}`);
+    }
+  }
 }
 
 // 20 min
 export function ordersToCSV(orders) {
-    const csvRows = [];
+  const csvRows = [];
 
-    csvRows.push("Order ID,Product ID,Quantity,Order Worth");
+  csvRows.push("Order ID,Product ID,Quantity,Order Worth");
 
-    orders.forEach((order) => {
-        order.products.forEach((product) => {
-            csvRows.push(
-                `${order.orderID},${product.productID},${product.quantity},${order.orderWorth}`
-            );
-        });
+  orders.forEach((order) => {
+    order.products.forEach((product) => {
+      csvRows.push(
+        `${order.orderID},${product.productID},${product.quantity},${order.orderWorth}`
+      );
     });
+  });
 
-    return csvRows.join("\n");
+  return csvRows.join("\n");
 }
 
+function updateFetchLog() {
+    
+}
