@@ -83,6 +83,9 @@ export async function fetchOrders(interval) {
         const response = await fetch(url, options);
 
         if (!response.ok) {
+            if (response.status === 401) {
+                console.warn("Please check your API_KEY");
+            }
             throw new Error(`Response status: ${response.status}`);
         }
 
