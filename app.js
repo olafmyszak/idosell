@@ -6,9 +6,9 @@ const app = express();
 
 app.use(express.json());
 app.use(
-  expressBasicAuth({
-    users: { admin: "admin" },
-  })
+    expressBasicAuth({
+        users: { admin: "admin" },
+    })
 );
 app.use("/orders", ordersRouter);
 

@@ -30,11 +30,10 @@ By default, the server runs at http://localhost:3000.
 
 ## API Endpoints
 
-| Method | Endpoint            | Description                                                                                                                   |
-|--------|---------------------|-------------------------------------------------------------------------------------------------------------------------------|
-| GET    | `/orders`           | Returns a list of orders in CSV.<br>Accepts optional `minWorth` and `maxWorth` query parameters to filter orders by worth.    |
-| GET    | `/orders/:orderId`  | Returns a single order by ID in JSON.                                                                                         |
-
+| Method | Endpoint           | Description                                                                                                                |
+| ------ | ------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/orders`          | Returns a list of orders in CSV.<br>Accepts optional `minWorth` and `maxWorth` query parameters to filter orders by worth. |
+| GET    | `/orders/:orderId` | Returns a single order by ID in JSON.                                                                                      |
 
 ### /orders – Query Parameters
 
@@ -55,14 +54,14 @@ Each order object has the following structure (before CSV formatting):
 
 ```json
 {
-  "orderID": "orderId",
-  "products": [
-    {
-      "productID": 123,
-      "quantity": 1
-    }
-  ],
-  "orderWorth": 200
+    "orderID": "orderId",
+    "products": [
+        {
+            "productID": 123,
+            "quantity": 1
+        }
+    ],
+    "orderWorth": 200
 }
 ```
 

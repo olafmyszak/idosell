@@ -21,168 +21,173 @@ db.exec(`
 `);
 
 export function getOrderById(orderId) {
-  const getOrder = db.prepare("SELECT * FROM orders WHERE orderID = ?");
-  const order = getOrder.get(orderId);
+    const getOrder = db.prepare("SELECT * FROM orders WHERE orderID = ?");
+    const order = getOrder.get(orderId);
 
-  if (!order) {
-    return null;
-  }
+    if (!order) {
+        return null;
+    }
 
-  return {
-    orderID: order.orderID,
-    products: JSON.parse(order.products),
-    orderWorth: order.orderWorth,
-  };
+    return {
+        orderID: order.orderID,
+        products: JSON.parse(order.products),
+        orderWorth: order.orderWorth,
+    };
 }
 
 export function getAllOrders() {
-  let orders = db.prepare("SELECT * FROM orders").all();
+    let orders = db.prepare("SELECT * FROM orders").all();
 
-  orders = orders.map((row) => ({
-    orderID: row.orderID,
-    products: JSON.parse(row.products),
-    orderWorth: row.orderWorth,
-  }));
+    orders = orders.map((row) => ({
+        orderID: row.orderID,
+        products: JSON.parse(row.products),
+        orderWorth: row.orderWorth,
+    }));
 
-  return orders;
+    return orders;
 }
 
 // 1h
 export async function fetchOrders(interval) {
-  if (!shouldFetch(interval)) {
-    return;
-  }
-
-  const url = `https://${process.env.API_URL}/api/admin/v5/orders/orders/search`;
-
-  let page = 0;
-
-  while (true) {
-    const options = {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-        "X-API-KEY": process.env.API_KEY,
-      },
-      body: JSON.stringify({
-        params: {
-          ordersStatuses: [
-            "finished",
-            "on_order",
-            "packed",
-            "ready",
-            "delivery_waiting",
-            "finished_ext",
-          ],
-          resultsPage: page,
-        },
-      }),
-    };
-
-    const response = await fetch(url, options);
-
-    if (!response.ok) {
-      throw new Error(`Response status: ${response.status}`);
+    if (!shouldFetch(interval)) {
+        return;
     }
 
-    const json = await response.json();
+    const url = `https://${process.env.API_URL}/api/admin/v5/orders/orders/search`;
 
-    // Filter entries with null or empty products and extract relevant data
-    const filtered = Object.values(json.Results)
-      .filter((entry) => {
-        const products = entry.orderDetails?.productsResults;
-        return products && Array.isArray(products) && products.length > 0;
-      })
-      .map((entry) => ({
-        orderID: entry.orderId,
-        products: entry.orderDetails.productsResults.map((product) => ({
-          productID: product.productId,
-          quantity: product.productQuantity,
-        })),
-        orderWorth:
-          entry.orderDetails.payments.orderBaseCurrency.orderProductsCost,
-      }));
+    let page = 0;
 
-    const insert = db.prepare(`
+    while (true) {
+        const options = {
+            method: "POST",
+            headers: {
+                accept: "application/json",
+                "content-type": "application/json",
+                "X-API-KEY": process.env.API_KEY,
+            },
+            body: JSON.stringify({
+                params: {
+                    ordersStatuses: [
+                        "finished",
+                        "on_order",
+                        "packed",
+                        "ready",
+                        "delivery_waiting",
+                        "finished_ext",
+                    ],
+                    resultsPage: page,
+                },
+            }),
+        };
+
+        const response = await fetch(url, options);
+
+        if (!response.ok) {
+            throw new Error(`Response status: ${response.status}`);
+        }
+
+        const json = await response.json();
+
+        // Filter entries with null or empty products and extract relevant data
+        const filtered = Object.values(json.Results)
+            .filter((entry) => {
+                const products = entry.orderDetails?.productsResults;
+                return (
+                    products && Array.isArray(products) && products.length > 0
+                );
+            })
+            .map((entry) => ({
+                orderID: entry.orderId,
+                products: entry.orderDetails.productsResults.map((product) => ({
+                    productID: product.productId,
+                    quantity: product.productQuantity,
+                })),
+                orderWorth:
+                    entry.orderDetails.payments.orderBaseCurrency
+                        .orderProductsCost,
+            }));
+
+        const insert = db.prepare(`
                       INSERT OR REPLACE INTO orders (orderID, products, orderWorth)
                       VALUES (?, ?, ?)
                       `);
 
-    const insertMany = db.transaction((orders) => {
-      for (const order of orders) {
-        insert.run(
-          order.orderID,
-          JSON.stringify(order.products),
-          order.orderWorth
-        );
-      }
-    });
+        const insertMany = db.transaction((orders) => {
+            for (const order of orders) {
+                insert.run(
+                    order.orderID,
+                    JSON.stringify(order.products),
+                    order.orderWorth
+                );
+            }
+        });
 
-    insertMany(filtered);
+        insertMany(filtered);
 
-    // Fetch data untill all pages were read
-    ++page;
-    if (page >= json.resultsNumberPage) {
-      break;
+        // Fetch data untill all pages were read
+        ++page;
+        if (page >= json.resultsNumberPage) {
+            break;
+        }
     }
-  }
 
-  updateFetchLog();
-  console.log(`Fetched orders data at ${new Date().toLocaleString()}`);
+    updateFetchLog();
+    console.log(`Fetched orders data at ${new Date().toLocaleString()}`);
 }
 
 // 20 min
 export function ordersToCSV(orders) {
-  const csvRows = [];
+    const csvRows = [];
 
-  csvRows.push("Order ID,Product ID,Quantity,Order Worth");
+    csvRows.push("Order ID,Product ID,Quantity,Order Worth");
 
-  orders.forEach((order) => {
-    order.products.forEach((product) => {
-      csvRows.push(
-        `${order.orderID},${product.productID},${product.quantity},${order.orderWorth}`
-      );
+    orders.forEach((order) => {
+        order.products.forEach((product) => {
+            csvRows.push(
+                `${order.orderID},${product.productID},${product.quantity},${order.orderWorth}`
+            );
+        });
     });
-  });
 
-  return csvRows.join("\n");
+    return csvRows.join("\n");
 }
 
 function getLastFetchTimestamp() {
-  const row = db
-    .prepare(
-      `
+    const row = db
+        .prepare(
+            `
       SELECT last_fetch_timestamp FROM fetch_log ORDER BY id DESC LIMIT 1
     `
-    )
-    .get();
+        )
+        .get();
 
-  return row?.last_fetch_timestamp;
+    return row?.last_fetch_timestamp;
 }
 
 function updateFetchLog() {
-  const timestamp = Date.now();
+    const timestamp = Date.now();
 
-  const insert = db.prepare(
-    `INSERT INTO fetch_log (last_fetch_timestamp) VALUES (?)`
-  );
+    const insert = db.prepare(
+        `INSERT INTO fetch_log (last_fetch_timestamp) VALUES (?)`
+    );
 
-  insert.run(timestamp);
+    insert.run(timestamp);
 }
 
 function shouldFetch(interval) {
-  const lastFetch = getLastFetchTimestamp();
+    const lastFetch = getLastFetchTimestamp();
 
-  if (!lastFetch) {
+    if (!lastFetch) {
+        return true;
+    }
+
+    const now = Date.now();
+    if (now - lastFetch < interval) {
+        console.log(
+            "Orders fetched already within the specified time interval"
+        );
+        return false;
+    }
+
     return true;
-  }
-
-  const now = Date.now();
-  if (now - lastFetch < interval) {
-    console.log("Orders fetched already within the specified time interval");
-    return false;
-  }
-
-  return true;
 }
