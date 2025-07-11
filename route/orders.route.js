@@ -8,7 +8,7 @@ import {
 const router = express.Router();
 
 // 5 min
-router.get("/:orderId", async (req, res) => {
+router.get("/:orderId", (req, res) => {
   const orderId = req.params.orderId;
   const order = getOrderById(orderId);
 
@@ -20,7 +20,7 @@ router.get("/:orderId", async (req, res) => {
 });
 
 // 10 min
-router.get("/", async (req, res) => {
+router.get("/", (req, res) => {
   const minWorth = Number(req.query.minWorth);
   const maxWorth = Number(req.query.maxWorth);
 

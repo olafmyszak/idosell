@@ -16,9 +16,7 @@ db.exec(`
 db.exec(`
     CREATE TABLE IF NOT EXISTS fetch_log (
         id INTEGER PRIMARY KEY,
-        last_fetch_date TEXT NOT NULL,
-        last_fetch_timestamp INTEGER NOT NULL,
-        status TEXT DEFAULT 'success'
+        last_fetch_timestamp INTEGER NOT NULL
     );
 `);
 
@@ -50,7 +48,11 @@ export function getAllOrders() {
 }
 
 // 1h
-export async function fetchOrders() {
+export async function fetchOrders(interval) {
+  if (!shouldFetch(interval)) {
+    return;
+  }
+
   const url = `https://${process.env.API_URL}/api/admin/v5/orders/orders/search`;
 
   let page = 0;
@@ -78,57 +80,56 @@ export async function fetchOrders() {
       }),
     };
 
-    try {
-      const response = await fetch(url, options);
-      if (!response.ok) {
-        throw new Error(`Response status: ${response.status}`);
-      }
+    const response = await fetch(url, options);
 
-      const json = await response.json();
+    if (!response.ok) {
+      throw new Error(`Response status: ${response.status}`);
+    }
 
-      // Filter entries with null or empty products and extract relevant data
-      const filtered = Object.values(json.Results)
-        .filter((entry) => {
-          const products = entry.orderDetails?.productsResults;
-          return products && Array.isArray(products) && products.length > 0;
-        })
-        .map((entry) => ({
-          orderID: entry.orderId,
-          products: entry.orderDetails.productsResults.map((product) => ({
-            productID: product.productId,
-            quantity: product.productQuantity,
-          })),
-          orderWorth:
-            entry.orderDetails.payments.orderBaseCurrency.orderProductsCost,
-        }));
+    const json = await response.json();
 
-      const insert = db.prepare(`
+    // Filter entries with null or empty products and extract relevant data
+    const filtered = Object.values(json.Results)
+      .filter((entry) => {
+        const products = entry.orderDetails?.productsResults;
+        return products && Array.isArray(products) && products.length > 0;
+      })
+      .map((entry) => ({
+        orderID: entry.orderId,
+        products: entry.orderDetails.productsResults.map((product) => ({
+          productID: product.productId,
+          quantity: product.productQuantity,
+        })),
+        orderWorth:
+          entry.orderDetails.payments.orderBaseCurrency.orderProductsCost,
+      }));
+
+    const insert = db.prepare(`
                       INSERT OR REPLACE INTO orders (orderID, products, orderWorth)
                       VALUES (?, ?, ?)
                       `);
 
-      const insertMany = db.transaction((orders) => {
-        for (const order of orders) {
-          insert.run(
-            order.orderID,
-            JSON.stringify(order.products),
-            order.orderWorth
-          );
-        }
-      });
-
-      insertMany(filtered);
-
-      // Fetch data untill all pages were read
-      ++page;
-      if (page >= json.resultsNumberPage) {
-        break;
+    const insertMany = db.transaction((orders) => {
+      for (const order of orders) {
+        insert.run(
+          order.orderID,
+          JSON.stringify(order.products),
+          order.orderWorth
+        );
       }
-    } catch (error) {
-      console.error("External API error:", error);
-      throw new Error(`Failed to fetch data: ${error.message}`);
+    });
+
+    insertMany(filtered);
+
+    // Fetch data untill all pages were read
+    ++page;
+    if (page >= json.resultsNumberPage) {
+      break;
     }
   }
+
+  updateFetchLog();
+  console.log(`Fetched orders data at ${new Date().toLocaleString()}`);
 }
 
 // 20 min
@@ -148,6 +149,40 @@ export function ordersToCSV(orders) {
   return csvRows.join("\n");
 }
 
+function getLastFetchTimestamp() {
+  const row = db
+    .prepare(
+      `
+      SELECT last_fetch_timestamp FROM fetch_log ORDER BY id DESC LIMIT 1
+    `
+    )
+    .get();
+
+  return row?.last_fetch_timestamp;
+}
+
 function updateFetchLog() {
-    
+  const timestamp = Date.now();
+
+  const insert = db.prepare(
+    `INSERT INTO fetch_log (last_fetch_timestamp) VALUES (?)`
+  );
+
+  insert.run(timestamp);
+}
+
+function shouldFetch(interval) {
+  const lastFetch = getLastFetchTimestamp();
+
+  if (!lastFetch) {
+    return true;
+  }
+
+  const now = Date.now();
+  if (now - lastFetch < interval) {
+    console.log("Orders fetched already within the specified time interval");
+    return false;
+  }
+
+  return true;
 }
